@@ -72,10 +72,3 @@ EXAMPLE
 	SPARK EXAMPLE WORDCOUNT:
 	      python3 wordcount_ppark_profile.py pg4300.txt output/spark_wc
 
-
-
-
-echo 'export SPARK_HOME=/opt/spark/spark-3.5.1-bin-hadoop3' >> ~/.bashrc
-echo 'export PATH=$PATH:$SPARK_HOME/bin' >> ~/.bashrc
-source ~/.bashrc
-
