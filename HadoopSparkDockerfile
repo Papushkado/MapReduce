@@ -16,3 +16,5 @@ RUN echo 'export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")' | 
 RUN apt-get update && apt-get upgrade -y
 RUN apt-get install python3 python3-pip -y
 RUN pip3 install pyspark
+
+WORKDIR /usr/src
