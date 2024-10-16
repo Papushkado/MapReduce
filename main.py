@@ -64,3 +64,18 @@ export PATH=$PATH:/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/us
 /usr/local/spark/bin/spark-submit --version
 touch /tmp/user_data_complete
 """
+
+# Lancer l'instance EC2
+response = ec2_client.run_instances(UserData=user_data, **instance_params)
+instance_id = response['Instances'][0]['InstanceId']
+print(f"Instance {instance_id} is launching...")
+
+# Attendre que l'instance soit en cours d'exécution
+ec2_resource = boto3.resource('ec2')
+instance = ec2_resource.Instance(instance_id)
+instance.wait_until_running()
+instance.reload()  # Mettre à jour l'IP publique
+public_ip = instance.public_ip_address
+print(f"The public IP address of instance {instance_id} is: {public_ip}")
+time.sleep(100)  # Attendre que l'instance soit prête
+
