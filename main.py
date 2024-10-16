@@ -91,7 +91,19 @@ while True:
         print("Waiting for Hadoop and Spark setup to complete...")
         time.sleep(60)
 
-        
+# Télécharger le fichier pg4300.txt avant d'exécuter les commandes
+download_pg4300_command = "wget https://www.gutenberg.org/cache/epub/4300/pg4300.txt -O pg4300.txt"
+run_command_on_ec2(public_ip, str(key_pair_path), download_pg4300_command)
+
+# Upload du script Python WordCount Spark
+upload_wordcount_script_command = "echo '{}' > /home/ubuntu/wordCount_spark.py".format(open('wordCount_spark.py').read())
+run_command_on_ec2(public_ip, str(key_pair_path), upload_wordcount_script_command)
+
+# Upload du script Python Recommandation d'amis
+upload_friend_recommendation_command = "echo '{}' > /home/ubuntu/friend_recommendation.py".format(open('friend_recommendation.py').read())
+run_command_on_ec2(public_ip, str(key_pair_path), upload_friend_recommendation_command)
+
+
 # Exécution du WordCount avec Hadoop, Linux, et Spark
 wordCount_Hadoop_command = """
 /usr/local/hadoop/bin/hadoop fs -mkdir /input
@@ -119,7 +131,7 @@ print('Friend Recommendation output:', friend_output)
 ec2_client.terminate_instances(InstanceIds=[instance_id])
 print(f"Instance {instance_id} terminée.")
 
-time.sleep(300)
+instance.wait_until_terminated()
 # Supprimer la Key Pair
 ec2_client.delete_key_pair(KeyName=key_pair_name)
 print(f"Key pair '{key_pair_name}' supprimée.")
