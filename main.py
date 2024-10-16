@@ -75,7 +75,7 @@ download_pg4300_command = "wget https://www.gutenberg.org/cache/epub/4300/pg4300
 run_command_on_ec2(public_ip, str(key_pair_path), download_pg4300_command)
 
 # Upload du script Python WordCount Spark
-upload_wordcount_script_command = "echo '{}' > /home/ubuntu/wordCount_spark.py".format(open('/utils/wordCount_spark.py').read())
+upload_wordcount_script_command = "echo '{}' > /home/ubuntu/wordCount_spark.py".format(open('./utils/wordCount_spark.py').read())
 run_command_on_ec2(public_ip, str(key_pair_path), upload_wordcount_script_command)
 
 # Upload du script Python Recommandation d'amis
