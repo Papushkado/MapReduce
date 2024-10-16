@@ -82,10 +82,49 @@ time.sleep(100)  # Attendre que l'instance soit prête
 # Vérification de l'exécution du script de configuration
 command = 'test -f /tmp/user_data_complete && echo "complete" || echo "incomplete"'
 while True:
-    output, _ = run_command_on_ec2(public_ip, key_pair_path, command)
+    # Convertir key_pair_path en chaîne pour l'utiliser avec paramiko
+    output, _ = run_command_on_ec2(public_ip, str(key_pair_path), command)
     if output == "complete":
         print("Setup completed! Proceeding with Word Count and Friend Recommendation...")
         break
     else:
         print("Waiting for Hadoop and Spark setup to complete...")
         time.sleep(60)
+
+        
+# Exécution du WordCount avec Hadoop, Linux, et Spark
+wordCount_Hadoop_command = """
+/usr/local/hadoop/bin/hadoop fs -mkdir /input
+/usr/local/hadoop/bin/hadoop fs -put pg4300.txt /input
+/usr/local/hadoop/bin/hadoop jar /usr/local/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.4.0.jar wordcount /input/pg4300.txt /output
+/usr/local/hadoop/bin/hadoop fs -cat /output/part-r-00000 > output_hadoop.txt
+cat output_hadoop.txt
+"""
+hadoop_output, _ = run_command_on_ec2(public_ip, key_pair_path, wordCount_Hadoop_command)
+print('Hadoop WordCount output:', hadoop_output)
+
+wordCount_Linux_command = "cat pg4300.txt | tr ' ' '\\n' | sort | uniq -c > output_linux.txt"
+linux_output, _ = run_command_on_ec2(public_ip, key_pair_path, wordCount_Linux_command)
+print('Linux WordCount output:', linux_output)
+
+spark_command = "/usr/local/spark/bin/spark-submit wordCount_spark.py /home/ubuntu/pg4300.txt /home/ubuntu/output_spark.txt"
+run_command_on_ec2(public_ip, key_pair_path, spark_command)
+
+# Exécuter la recommandation d'amis
+friend_recommendation_command = "/usr/local/spark/bin/spark-submit friend_recommendation.py"
+friend_output, _ = run_command_on_ec2(public_ip, key_pair_path, friend_recommendation_command)
+print('Friend Recommendation output:', friend_output)
+
+# Nettoyage : arrêter et terminer l'instance EC2 après exécution
+ec2_client.terminate_instances(InstanceIds=[instance_id])
+print(f"Instance {instance_id} terminée.")
+
+time.sleep(300)
+# Supprimer la Key Pair
+ec2_client.delete_key_pair(KeyName=key_pair_name)
+print(f"Key pair '{key_pair_name}' supprimée.")
+
+# Supprimer le Security Group
+ec2_client.delete_security_group(GroupId=group_id)
+print(f"Security group '{security_group_name}' supprimé.")
+
