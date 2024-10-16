@@ -100,19 +100,19 @@ wordCount_Hadoop_command = """
 /usr/local/hadoop/bin/hadoop fs -cat /output/part-r-00000 > output_hadoop.txt
 cat output_hadoop.txt
 """
-hadoop_output, _ = run_command_on_ec2(public_ip, key_pair_path, wordCount_Hadoop_command)
+hadoop_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), wordCount_Hadoop_command)
 print('Hadoop WordCount output:', hadoop_output)
 
 wordCount_Linux_command = "cat pg4300.txt | tr ' ' '\\n' | sort | uniq -c > output_linux.txt"
-linux_output, _ = run_command_on_ec2(public_ip, key_pair_path, wordCount_Linux_command)
+linux_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), wordCount_Linux_command)
 print('Linux WordCount output:', linux_output)
 
 spark_command = "/usr/local/spark/bin/spark-submit wordCount_spark.py /home/ubuntu/pg4300.txt /home/ubuntu/output_spark.txt"
-run_command_on_ec2(public_ip, key_pair_path, spark_command)
+run_command_on_ec2(public_ip, str(key_pair_path), spark_command)
 
 # Exécuter la recommandation d'amis
 friend_recommendation_command = "/usr/local/spark/bin/spark-submit friend_recommendation.py"
-friend_output, _ = run_command_on_ec2(public_ip, key_pair_path, friend_recommendation_command)
+friend_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), friend_recommendation_command)
 print('Friend Recommendation output:', friend_output)
 
 # Nettoyage : arrêter et terminer l'instance EC2 après exécution
