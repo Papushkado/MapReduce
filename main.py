@@ -79,3 +79,13 @@ public_ip = instance.public_ip_address
 print(f"The public IP address of instance {instance_id} is: {public_ip}")
 time.sleep(100)  # Attendre que l'instance soit prête
 
+# Vérification de l'exécution du script de configuration
+command = 'test -f /tmp/user_data_complete && echo "complete" || echo "incomplete"'
+while True:
+    output, _ = run_command_on_ec2(public_ip, key_pair_path, command)
+    if output == "complete":
+        print("Setup completed! Proceeding with Word Count and Friend Recommendation...")
+        break
+    else:
+        print("Waiting for Hadoop and Spark setup to complete...")
+        time.sleep(60)
