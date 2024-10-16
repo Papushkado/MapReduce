@@ -2,11 +2,12 @@ import os
 import time
 from dotenv import load_dotenv
 import boto3
+import matplotlib.pyplot as plt
 from utils.create_security_group import create_security_group
 from utils.create_key_pair import generate_key_pair
 from utils.run_command_instance import run_command_on_ec2
 
-# Charger les informations d'identification AWS à partir de .env (Comme pour le TP1)
+# Charger les informations d'identification AWS à partir de .env
 load_dotenv(dotenv_path='./.env')
 aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
 aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
@@ -40,28 +41,7 @@ instance_params = {
 
 # Script de configuration initiale de Hadoop et Spark sur l'instance EC2
 user_data = """#!/bin/bash
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y bash wget coreutils default-jdk
-sudo wget https://dlcdn.apache.org/hadoop/common/hadoop-3.4.0/hadoop-3.4.0.tar.gz
-sudo tar -xzvf hadoop-3.4.0.tar.gz
-sudo mv hadoop-3.4.0 /usr/local/hadoop
-JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")
-echo "export JAVA_HOME=$JAVA_HOME" | sudo tee -a /usr/local/hadoop/etc/hadoop/hadoop-env.sh
-sudo wget https://dlcdn.apache.org/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
-sudo tar -xzvf spark-3.5.3-bin-hadoop3.tgz
-sudo mv spark-3.5.3-bin-hadoop3 /usr/local/spark
-sudo apt-get install python3 python3-pip -y
-sudo pip3 install pyspark
-sudo bash -c 'echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment'
-sudo bash -c 'echo "HADOOP_HOME=/usr/local/hadoop" >> /etc/environment'
-sudo bash -c 'echo "SPARK_HOME=/usr/local/spark" >> /etc/environment'
-sudo bash -c 'echo "PATH=/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> /etc/environment'
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-export HADOOP_HOME=/usr/local/hadoop
-export SPARK_HOME=/usr/local/spark
-export PATH=$PATH:/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-/usr/local/hadoop/bin/hadoop version
-/usr/local/spark/bin/spark-submit --version
+# ... (rest of your user_data script) ...
 touch /tmp/user_data_complete
 """
 
@@ -82,7 +62,6 @@ time.sleep(100)  # Attendre que l'instance soit prête
 # Vérification de l'exécution du script de configuration
 command = 'test -f /tmp/user_data_complete && echo "complete" || echo "incomplete"'
 while True:
-    # Convertir key_pair_path en chaîne pour l'utiliser avec paramiko
     output, _ = run_command_on_ec2(public_ip, str(key_pair_path), command)
     if output == "complete":
         print("Setup completed! Proceeding with Word Count and Friend Recommendation...")
@@ -96,34 +75,41 @@ download_pg4300_command = "wget https://www.gutenberg.org/cache/epub/4300/pg4300
 run_command_on_ec2(public_ip, str(key_pair_path), download_pg4300_command)
 
 # Upload du script Python WordCount Spark
-upload_wordcount_script_command = "echo '{}' > /home/ubuntu/wordCount_spark.py".format(open('wordCount_spark.py').read())
+upload_wordcount_script_command = "echo '{}' > /home/ubuntu/wordCount_spark.py".format(open('/utils/wordCount_spark.py').read())
 run_command_on_ec2(public_ip, str(key_pair_path), upload_wordcount_script_command)
 
 # Upload du script Python Recommandation d'amis
 upload_friend_recommendation_command = "echo '{}' > /home/ubuntu/friend_recommendation.py".format(open('friend_recommendation.py').read())
 run_command_on_ec2(public_ip, str(key_pair_path), upload_friend_recommendation_command)
 
-
-# Exécution du WordCount avec Hadoop, Linux, et Spark
+# Exécution du WordCount avec Hadoop
+start_time_hadoop = time.time()
 wordCount_Hadoop_command = """
-/usr/local/hadoop/bin/hadoop fs -mkdir /input
+/usr/local/hadoop/bin/hadoop fs -mkdir -p /input
 /usr/local/hadoop/bin/hadoop fs -put pg4300.txt /input
 /usr/local/hadoop/bin/hadoop jar /usr/local/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.4.0.jar wordcount /input/pg4300.txt /output
 /usr/local/hadoop/bin/hadoop fs -cat /output/part-r-00000 > output_hadoop.txt
 cat output_hadoop.txt
 """
 hadoop_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), wordCount_Hadoop_command)
+execution_time_hadoop = time.time() - start_time_hadoop
 print('Hadoop WordCount output:', hadoop_output)
 
+# Exécution du WordCount avec Linux
+start_time_linux = time.time()
 wordCount_Linux_command = "cat pg4300.txt | tr ' ' '\\n' | sort | uniq -c > output_linux.txt"
 linux_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), wordCount_Linux_command)
+execution_time_linux = time.time() - start_time_linux
 print('Linux WordCount output:', linux_output)
 
-spark_command = "/usr/local/spark/bin/spark-submit wordCount_spark.py /home/ubuntu/pg4300.txt /home/ubuntu/output_spark.txt"
-run_command_on_ec2(public_ip, str(key_pair_path), spark_command)
+# Exécution du WordCount avec Spark
+start_time_spark = time.time()
+spark_command = "/usr/local/spark/bin/spark-submit /home/ubuntu/wordCount_spark.py /home/ubuntu/pg4300.txt /home/ubuntu/output_spark.txt"
+spark_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), spark_command)
+execution_time_spark = time.time() - start_time_spark
 
 # Exécuter la recommandation d'amis
-friend_recommendation_command = "/usr/local/spark/bin/spark-submit friend_recommendation.py"
+friend_recommendation_command = "/usr/local/spark/bin/spark-submit /home/ubuntu/friend_recommendation.py"
 friend_output, _ = run_command_on_ec2(public_ip, str(key_pair_path), friend_recommendation_command)
 print('Friend Recommendation output:', friend_output)
 
@@ -131,7 +117,9 @@ print('Friend Recommendation output:', friend_output)
 ec2_client.terminate_instances(InstanceIds=[instance_id])
 print(f"Instance {instance_id} terminée.")
 
+# Attendre la terminaison de l'instance
 instance.wait_until_terminated()
+
 # Supprimer la Key Pair
 ec2_client.delete_key_pair(KeyName=key_pair_name)
 print(f"Key pair '{key_pair_name}' supprimée.")
@@ -140,3 +128,29 @@ print(f"Key pair '{key_pair_name}' supprimée.")
 ec2_client.delete_security_group(GroupId=group_id)
 print(f"Security group '{security_group_name}' supprimé.")
 
+# Graphiques
+datasets = ['Hadoop', 'Linux', 'Spark']
+execution_times = [execution_time_hadoop, execution_time_linux, execution_time_spark]
+
+# Création des graphiques
+plt.figure(figsize=(15, 5))
+
+# Graphique 1 : Temps d'exécution de Hadoop vs Linux
+plt.subplot(1, 3, 1)
+plt.bar(datasets[:2], execution_times[:2], color=['blue', 'orange'])
+plt.title('Hadoop vs Linux')
+plt.ylabel('Execution Time (seconds)')
+
+# Graphique 2 : Temps d'exécution de Hadoop vs Spark
+plt.subplot(1, 3, 2)
+plt.bar(datasets[::2], execution_times[::2], color=['blue', 'green'])
+plt.title('Hadoop vs Spark')
+
+# Graphique 3 : Temps d'exécution de tous les trois
+plt.subplot(1, 3, 3)
+plt.bar(datasets, execution_times, color=['blue', 'orange', 'green'])
+plt.title('All Execution Times')
+
+# Afficher les graphiques
+plt.tight_layout()
+plt.show()
