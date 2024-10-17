@@ -1,6 +1,6 @@
 import paramiko
 import time
-import socket  # handle socket-related exceptions
+import socket
 
 
 def establish_ssh_connection(public_ip, key_pair_path, retries=5):
