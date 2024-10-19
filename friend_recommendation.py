@@ -38,22 +38,11 @@ def map_connection_to_owner_recfriend_strength(line):
 
     return [(rec_pair[0], (rec_pair[1], strength)), (rec_pair[1], (rec_pair[0], strength)) ]
 
-def map_and_sort_friend_rec(line, max_user_id, user_friends_dict):
+def map_and_sort_friend_rec(line):
     user_id = line[0]
     ordered_friend_rec = list(line[1])
-    ordered_friend_rec.sort(key=lambda x: x[1], reverse=True)
+    ordered_friend_rec.sort(key=lambda x: (x[1], -x[0]), reverse=True)
     recommended_ids = [x[0] for x in ordered_friend_rec][:10]  # take top 10 recs
-
-    # If fewer than 10 recommendations, fill with random users
-    n_tries = 100
-    current_friends = list(user_friends_dict.get(user_id, []))  # actual friends of the user
-    not_available = current_friends + recommended_ids + [user_id]
-    while len(recommended_ids) < 10 and n_tries > 0:
-        n_tries -=1
-        new_rc = randrange(0, max_user_id + 1)
-        if new_rc not in not_available:
-            recommended_ids.append(new_rc)
-            not_available.append(new_rc)
 
     return user_id, recommended_ids
 
@@ -70,11 +59,6 @@ def process_friend_recommendation(file_path: Path, output_file: Path):
     # Load the data and split into user and friends
     user_friends_lines = sc.textFile(str(file_path)).map(map_line_into_user_and_friends)
 
-
-    # Collect all user ids and the user friends dictionary to use for random recommendation filling
-    max_user_id = user_friends_lines.keys().max()
-    user_friends_dict = dict(user_friends_lines.collect())  # collect to dictionary for fast lookup
-
     friends_connection = user_friends_lines.flatMap(map_friends_connection).groupByKey() # group every relation into 1 line
 
     #remove line if one of the connections is a -1. This mean they are a direct friend
@@ -90,9 +74,9 @@ def process_friend_recommendation(file_path: Path, output_file: Path):
     owner_rec_w_strength = second_hand_connection_strength.flatMap(map_connection_to_owner_recfriend_strength).groupByKey()
 
     # order and map the line so that we get : (user_id, [rec3, rec 4, rec1... ]) where rec were ordered based on the strength and we
-    # took the top 10. We pass the original friend list so that we can add ranom user in case of N < 10
+    # took the top 10
     #top10_friend_rec = owner_rec_w_strength.flatMap(map_and_sort_friend_rec)#.collect()
-    top10_friend_rec = owner_rec_w_strength.map(lambda line: map_and_sort_friend_rec(line, max_user_id, user_friends_dict))
+    top10_friend_rec = owner_rec_w_strength.map(map_and_sort_friend_rec)
 
     #write in format asked in tp
     top10_friend_rec = list(top10_friend_rec.collect())
