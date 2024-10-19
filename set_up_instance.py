@@ -13,7 +13,7 @@ os.environ.pop('AWS_ACCESS_KEY_ID', None)
 os.environ.pop('AWS_SECRET_ACCESS_KEY', None)
 os.environ.pop('AWS_SESSION_TOKEN', None)
 # Load .env file
-load_dotenv(dotenv_path='./.env')
+load_dotenv()
 
 aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
 aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
@@ -92,7 +92,11 @@ instance = ec2_resource.Instance(instance_id)
 
 instance.wait_until_running()  # Wait until the instance is running
 instance.reload() # Reload the instance data to get updated attributes
-public_ip = instance.public_ip_address # Get the public IP address
+public_ip = response['Instances'][0].get('PublicIpAddress') # Get the public IP address
+
+# time.sleep(800)  # Wait for 60 seconds before checking the public IP address
+# response = ec2.describe_instances(InstanceIds=[instance_id])
+# public_ip = response['Reservations'][0]['Instances'][0].get('PublicIpAddress')
 
 print(f"The public IP address of instance {instance_id} is: {public_ip}")
 time.sleep(100)
