@@ -1,7 +1,7 @@
 from pyspark import SparkConf, SparkContext
 from pathlib import Path
 import sys
-
+from random import randrange
 
 def map_line_into_user_and_friends(line):
     split = line.split("\t")
@@ -27,7 +27,7 @@ def map_friends_connection(user_friends_entry):
                 (min(friends[i], friends[j]), max(friends[j], friends[i])), 1)) #value of 1 is second hand friends
         connections.append(
             (
-                (min(user, friends[i]), max(user, friends[i])), 0) #put lower id in left so we dont have duplicates
+                (min(user, friends[i]), max(user, friends[i])), -1) #put lower id in left so we dont have duplicates
             ) # value of 0 is direct friend
 
     return connections
@@ -41,10 +41,10 @@ def map_connection_to_owner_recfriend_strength(line):
 def map_and_sort_friend_rec(line):
     user_id = line[0]
     ordered_friend_rec = list(line[1])
-    ordered_friend_rec.sort(key = lambda x: x[1], reverse = True)
-    ordered_friend_rec = [x[0] for x in ordered_friend_rec][:10] #take top 10 rec id
+    ordered_friend_rec.sort(key=lambda x: (x[1], -x[0]), reverse=True)
+    recommended_ids = [x[0] for x in ordered_friend_rec][:10]  # take top 10 recs
 
-    return (user_id, ordered_friend_rec)
+    return user_id, recommended_ids
 
 
 def process_friend_recommendation(file_path: Path, output_file: Path):
@@ -58,13 +58,14 @@ def process_friend_recommendation(file_path: Path, output_file: Path):
     sc = SparkContext(conf=conf)
     # Load the data and split into user and friends
     user_friends_lines = sc.textFile(str(file_path)).map(map_line_into_user_and_friends)
+
     friends_connection = user_friends_lines.flatMap(map_friends_connection).groupByKey() # group every relation into 1 line
 
-    #remove line if one of the connections is a 0. This mean they are a direct friend
-    # for example ((usera, userb), [1,1,1,1,1,0,1,1,1,1]) will be removed because there exist a direct connection between (usera, userb)
-    friends_filtered = friends_connection.filter(lambda line: 0 not in line[1]) 
+    #remove line if one of the connections is a -1. This mean they are a direct friend
+    # for example ((usera, userb), [1,1,1,1,1,-1,1,1,1,1]) will be removed because there exist a direct connection between (usera, userb)
+    friends_filtered = friends_connection.filter(lambda line: -1 not in line[1]) 
 
-    #we sum every list for every pair ((usera, userb), [1,1,1,1,1,1,1,1,1,1]) so that we get the overall strength
+    #we sum every list for every pair ((usera, userb), [1,1,1,1,1,1,1,1,1,1]) so that we get the overall strength (nb friends in common)
     # current format will be (user_id1, (rec_1, str1)), (user_id2, (rec_2, str2)), ...
     second_hand_connection_strength = friends_filtered.map(lambda line: (line[0], sum(line[1])))
 
@@ -74,9 +75,20 @@ def process_friend_recommendation(file_path: Path, output_file: Path):
 
     # order and map the line so that we get : (user_id, [rec3, rec 4, rec1... ]) where rec were ordered based on the strength and we
     # took the top 10
-    top10_friend_rec = owner_rec_w_strength.flatMap(map_and_sort_friend_rec)#.collect()
+    #top10_friend_rec = owner_rec_w_strength.flatMap(map_and_sort_friend_rec)#.collect()
+    top10_friend_rec = owner_rec_w_strength.map(map_and_sort_friend_rec)
 
-    top10_friend_rec.saveAsTextFile(str(output_file))
+    #write in format asked in tp
+    top10_friend_rec = list(top10_friend_rec.collect())
+    top10_friend_rec.sort(key=lambda x: x[0])
+    with open(str(out_path), 'w') as f:
+        for line in top10_friend_rec:
+            user_id = line[0]
+            rec = line[1]
+            f.write(f'{user_id}\t{",".join(str(x) for x in rec)}')
+            f.write('\n')
+
+
 
     sc.stop()
 
