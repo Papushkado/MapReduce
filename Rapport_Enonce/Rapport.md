@@ -107,7 +107,7 @@ Below are the friend recommendations for the specified users based on our MapRed
 
 - To run code, you have to : 
   1. Have you AWS credentials in your environnement thanks to ``` aws configure ``` or by copying it in `~/.aws/credentials`
-  2. Run `automation.py`
+  2. Run `main.py`
 
 The full code is available [here](https://github.com/Papushkado/MapReduce)
 
