@@ -64,7 +64,7 @@ Our algorithm takes the following approach:
 
 - **Reduce Phase:** Count how many mutual friends exist between each pair and generate the top 10 friend recommendations.
 
-The code is available here : friend_recommendation.py
+The code is available here : [friend_recommendation.py](friend_recommendation.py)
 
 ## Challenges 
 
@@ -81,16 +81,16 @@ Below are the friend recommendations for the specified users based on our MapRed
 
 | User ID | Recommendations                                           |
 |---------|------------------------------------------------------------|
-| 924     |                |
-| 8941    |                  |
-| 8942    |                      |
-| 9019    |                          |
-| 9020    |                       |
-| 9021    |                        |
-| 9022    |                        |
-| 9990    |                 |
-| 9992    |                   |
-| 9993    |                           |
+| 924     | 439,2409,6995,11860,15416,43748,45881               |
+| 8941    | 8943,8944,8940                 |
+| 8942    | 8939,8940,8943,8944                    |
+| 9019    | 9022,317,9023                         |
+| 9020    | 9021,9016,9017,9022,317,9023                      |
+| 9021    | 9020,9016,9017,9022,317,9023                       |
+| 9022    | 9019,9020,9021,317,9016,9017,9023                       |
+| 9990    | 13134,13478,13877,34299,34485,34642,37941                |
+| 9992    | 9987,9989,35667,9991                  |
+| 9993    | 9991,13134,13478,13877,34299,34485,34642,37941                          |
 
 
 
