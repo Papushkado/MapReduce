@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
 import boto3
+from utils.clean_up import clean_up_instances
+from utils.user_data import getUserData
 from utils.create_security_group import create_security_group
 from utils.create_key_pair import generate_key_pair
 from utils.run_command_instance import establish_ssh_connection,run_command
@@ -59,49 +61,7 @@ instance_params = {
         ]
 }
 
-#Instance user data (Setting up Hadoop and Pyspark)
-user_data = """#!/bin/bash
-# python3 -m venv myenv
-# source myenv/bin/activate
-
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y bash wget coreutils default-jdk
-
-sudo wget https://dlcdn.apache.org/hadoop/common/hadoop-3.4.0/hadoop-3.4.0.tar.gz
-sudo tar -xzvf hadoop-3.4.0.tar.gz
-sudo mv hadoop-3.4.0 /usr/local/hadoop
-JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")
-echo "export JAVA_HOME=$JAVA_HOME" | sudo tee -a /usr/local/hadoop/etc/hadoop/hadoop-env.sh
-
-
-sudo wget https://dlcdn.apache.org/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
-sudo tar -xzvf spark-3.5.3-bin-hadoop3.tgz
-sudo mv spark-3.5.3-bin-hadoop3 /usr/local/spark
-
-
-sudo apt-get install python3 python3-pip -y
-sudo pip3 install pyspark --break-system-packages
-
-
-
-sudo bash -c 'echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment'
-sudo bash -c 'echo "HADOOP_HOME=/usr/local/hadoop" >> /etc/environment'
-sudo bash -c 'echo "SPARK_HOME=/usr/local/spark" >> /etc/environment'
-sudo bash -c 'echo "PATH=/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> /etc/environment'
-
-
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-export HADOOP_HOME=/usr/local/hadoop
-export SPARK_HOME=/usr/local/spark
-export PATH=$PATH:/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
-/usr/local/hadoop/bin/hadoop version
-/usr/local/spark/bin/spark-submit --version
-
-
-touch /tmp/user_data_complete
-"""
-response = ec2.run_instances(UserData=user_data, **instance_params)
+response = ec2.run_instances(UserData=getUserData(), **instance_params)
 instance_id = response['Instances'][0]['InstanceId']
 print(f"Instance {instance_id} is launching...")
 
@@ -149,29 +109,31 @@ while True:
         print(counter, " seconds elapsed...")
 
 iterations = 3
-datasets = ['https://www.gutenberg.ca/ebooks/buchanj-midwinter/buchanj-midwinter-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/carman-farhorizons/carman-farhorizons-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/colby-champlain/colby-champlain-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/cheyneyp-darkbahama/cheyneyp-darkbahama-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/delamare-bumps/delamare-bumps-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/charlesworth-scene/charlesworth-scene-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/delamare-lucy/delamare-lucy-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/delamare-myfanwy/delamare-myfanwy-00-t.txt',
-            'https://www.gutenberg.ca/ebooks/delamare-penny/delamare-penny-00-t.txt'
-            ]
+datasets = [
+    'https://www.gutenberg.ca/ebooks/buchanj-midwinter/buchanj-midwinter-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/carman-farhorizons/carman-farhorizons-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/colby-champlain/colby-champlain-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/cheyneyp-darkbahama/cheyneyp-darkbahama-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/delamare-bumps/delamare-bumps-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/charlesworth-scene/charlesworth-scene-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/delamare-lucy/delamare-lucy-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/delamare-myfanwy/delamare-myfanwy-00-t.txt',
+    'https://www.gutenberg.ca/ebooks/delamare-penny/delamare-penny-00-t.txt'
+]
 hadoop_times = []
 linux_times = []
 spark_times = []
 
-for dataset in datasets:
-    
+for idx, dataset in enumerate(datasets, start=1):
     file_name = dataset.split('/')[-1]
     
     hadoop_exec_times = []
     linux_exec_times = []
     spark_exec_times = []
     
-    for _ in range(iterations):
+    for iteration in range(iterations):
+        print(f"Processing dataset {idx}/{len(datasets)}, iteration {iteration + 1}/{iterations}...")
+
         # Download dataset
         download_command = f"wget {dataset} -O {file_name}"
         output, error = run_command(ssh_connection, download_command)
@@ -186,8 +148,7 @@ for dataset in datasets:
         start_time = time.time()
         output, error = run_command(ssh_connection, wordCount_Hadoop_command)
         hadoop_exec_times.append(time.time() - start_time)
-
-        print("Hadoop word count executed")
+        print(f"Hadoop word count executed for dataset {idx}/{len(datasets)}, iteration {iteration + 1}/{iterations}")
 
         # Linux WordCount command
         wordCount_Linux_command = f"cat {file_name} | tr ' ' '\\n' | sort | uniq -c"
@@ -195,8 +156,7 @@ for dataset in datasets:
         start_time = time.time()
         output, error = run_command(ssh_connection, wordCount_Linux_command)
         linux_exec_times.append(time.time() - start_time)
-
-        print("Linux word count executed")
+        print(f"Linux word count executed for dataset {idx}/{len(datasets)}, iteration {iteration + 1}/{iterations}")
 
         # Spark WordCount command
         START_COMMAND = f"/usr/local/spark/bin/spark-submit wordCount_spark.py /home/ubuntu/{file_name}"
@@ -206,8 +166,7 @@ for dataset in datasets:
         start_time = time.time()
         output, error = run_command(ssh_connection, wordCount_spark_command)
         spark_exec_times.append(time.time() - start_time)
-
-        print("Spark word count executed")
+        print(f"Spark word count executed for dataset {idx}/{len(datasets)}, iteration {iteration + 1}/{iterations}")
 
     # Calculate the average execution times across iterations
     hadoop_times.append(np.mean(hadoop_exec_times))
@@ -289,55 +248,9 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
     
-# #Running the word count on the instance using Hadoop
-# wordCount_Hadoop_command = """
-# wget https://www.gutenberg.org/cache/epub/4300/pg4300.txt -O pg4300.txt
-# /usr/local/hadoop/bin/hadoop fs -mkdir /input
-# /usr/local/hadoop/bin/hadoop fs -put pg4300.txt /input
-# /usr/local/hadoop/bin/hadoop jar /usr/local/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.4.0.jar wordcount /input/pg4300.txt /output
-# /usr/local/hadoop/bin/hadoop fs -cat /output/part-r-00000 > output.txt
-# cat output.txt
-# """
-
-# Hadoop_output, _ = run_command_on_ec2(public_ip,key_pair_path, wordCount_Hadoop_command)
-# print('Hadoop output:','\n',Hadoop_output)
-
-
-# #Running the word count on the instance using Linux
-# wordCount_Linux_command = """ cat pg4300 . txt | tr ’ ’ ’\n’ | sort | uniq -c """
-# Linux_output, _ = run_command_on_ec2(public_ip,key_pair_path, wordCount_Linux_command)
-# print('Linux output:','\n',Linux_output)
-
-
-# #Running the word count on the instance using Spark
-# START_COMMAND = "/usr/local/spark/bin/spark-submit wordCount_spark.py /home/ubuntu/pg4300.txt"
-# main_script = open("utils/wordCount_spark.py", "r").read()
-# wordCount_spark_command = "echo '{}' > wordCount_spark.py && {}".format(main_script, START_COMMAND)
-# Spark_output, _ = run_command_on_ec2(public_ip,key_pair_path, wordCount_spark_command)
-# print('Spark output:','\n',Spark_output)
 
 ##### In this part, we are going to clean_up, all the set up environnement
 
-def terminate_instances(ec2, instance_ids):
-    response = ec2.terminate_instances(InstanceIds=instance_ids)
-    return response
-
-def delete_key_pair(ec2, key_name):
-    response = ec2.delete_key_pair(KeyName=key_name)
-    return response
-
-def delete_security_group(ec2, group_id):
-    response = ec2.delete_security_group(GroupId=group_id)
-    return response
-
-def clean_up(ec2, instance_ids, key_name, group_id):
-    
-    terminate_instances(ec2,instance_ids)
-    time.sleep(INSTANCES_INSTALL_DELAY) # We wait 1mn30 to be sure that the instances are deleted
-    delete_key_pair(ec2,key_name)
-    time.sleep(60) # We wait 30s to be sure that the key_pairs are deleted
-    delete_security_group(ec2, group_id) # We need all the instances to be deleted before deleting the security group
-    
 print("\n Cleaning up instances and security group ...")
-clean_up(ec2, [instance_id], key_pair_name, group_id)
+clean_up_instances(ec2, [instance_id], key_pair_name, group_id)
 
