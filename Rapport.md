@@ -77,14 +77,20 @@ friends_filtered = friends_connection.filter(lambda line: -1 not in line[1])
 
 ## Results 
 
+Below are the friend recommendations for the specified users based on our MapReduce algorithm:
 
-
-
-
-
-
-
-
+| User ID | Recommendations                                           |
+|---------|------------------------------------------------------------|
+| 924     |                |
+| 8941    |                  |
+| 8942    |                      |
+| 9019    |                          |
+| 9020    |                       |
+| 9021    |                        |
+| 9022    |                        |
+| 9990    |                 |
+| 9992    |                   |
+| 9993    |                           |
 
 
 
@@ -92,6 +98,6 @@ friends_filtered = friends_connection.filter(lambda line: -1 not in line[1])
 
 # Appendix 
 
-The full code is available (here)[ddk.]
+The full code is available [here]()
 
 
