@@ -1,0 +1,106 @@
+from pyspark import SparkConf, SparkContext
+from pathlib import Path
+import sys
+from random import randrange
+
+def map_line_into_user_and_friends(line):
+    split = line.split("\t")
+    user_id = int(split[0])
+
+    # if no ids after user_id, friends_ids is an empty str, else we split the line based on ,
+    friends_ids = [] if split[1] == "" else list(map(lambda x: int(x), split[1].split(",")))
+
+    return user_id, friends_ids
+
+
+def map_friends_connection(user_friends_entry):
+
+    connections = []
+
+    user = user_friends_entry[0]
+    friends = user_friends_entry[1]
+
+    for i in range(0, len(friends)):
+        for j in range(i + 1, len(friends)): # avoid duplicates ex: ((2, 3), 1) and ((3, 2), 1). We assume that the friends are ordered
+            connections.append((
+                (min(friends[i], friends[j]), max(friends[j], friends[i])), 1)) # value of 1 is second hand friends
+        connections.append(
+            (
+                (min(user, friends[i]), max(user, friends[i])), -1) # put lower id in left so we don’t have duplicates
+            ) # value of -1 is direct friend
+
+    return connections
+
+def map_connection_to_owner_recfriend_strength(line):
+    rec_pair = line[0]
+    strength = int(line[1])
+
+    return [(rec_pair[0], (rec_pair[1], strength)), (rec_pair[1], (rec_pair[0], strength))]
+
+def map_and_sort_friend_rec(line, all_users):
+    user_id = line[0]
+    ordered_friend_rec = list(line[1])
+    ordered_friend_rec.sort(key=lambda x: (x[1], -x[0]), reverse=True)
+    recommended_ids = [x[0] for x in ordered_friend_rec][:10]  # take top 10 recs
+
+    # If less than 10 recommendations, fill with random users not in current friends or recommended
+    current_friends = set([x[0] for x in ordered_friend_rec])
+    if len(recommended_ids) < 10:
+        extra_recs = []
+        while len(recommended_ids) + len(extra_recs) < 10:
+            random_user = randrange(len(all_users))
+            if random_user != user_id and random_user not in recommended_ids and random_user not in current_friends:
+                extra_recs.append(random_user)
+        recommended_ids.extend(extra_recs)
+
+    return user_id, recommended_ids
+
+def process_friend_recommendation(file_path: Path, output_file: Path):
+    """
+    Process the friend recommendation data. Will create a new file with the recommendations. Each user defined in the input file
+    will have a list of the top10 possible friends that shared the most common friends with the user. This function uses Spark.
+    :param file_path: Path to the input file. This is a .txt file. The format is the following: 
+    <user_id><TAB><friend_id_a>,<friend_id_b>...
+    """
+    conf = SparkConf()
+    sc = SparkContext(conf=conf)
+
+    # Load the data and split into user and friends
+    user_friends_lines = sc.textFile(str(file_path)).map(map_line_into_user_and_friends)
+    all_users = user_friends_lines.keys().collect()  # Collect all users to use for random fills
+
+    friends_connection = user_friends_lines.flatMap(map_friends_connection).groupByKey() # group every relation into 1 line
+
+    # remove line if one of the connections is a -1. This means they are direct friends
+    # for example ((usera, userb), [1,1,1,1,1,-1,1,1,1,1]) will be removed because there is a direct connection between (usera, userb)
+    friends_filtered = friends_connection.filter(lambda line: -1 not in line[1]) 
+
+    # we sum every list for every pair ((usera, userb), [1,1,1,1,1,1,1,1,1,1]) so that we get the overall strength (nb friends in common)
+    # current format will be (user_id1, (rec_1, str1)), (user_id2, (rec_2, str2)), ...
+    second_hand_connection_strength = friends_filtered.map(lambda line: (line[0], sum(line[1])))
+
+    # we group by user_id key to group all recommendations in the same line
+    # current format will be (user_id, [(rec_1, str1), (rec_2, str2), (rec_3, str3)]), ...
+    owner_rec_w_strength = second_hand_connection_strength.flatMap(map_connection_to_owner_recfriend_strength).groupByKey()
+
+    # order and map the line so that we get: (user_id, [rec3, rec4, rec1... ]) where recs are ordered based on strength and we take the top 10
+    top10_friend_rec = owner_rec_w_strength.map(lambda line: map_and_sort_friend_rec(line, all_users))
+
+    # write in format asked in tp
+    top10_friend_rec = list(top10_friend_rec.collect())
+    top10_friend_rec.sort(key=lambda x: x[0])
+    with open(str(output_file), 'w') as f:
+        for line in top10_friend_rec:
+            user_id = line[0]
+            rec = line[1]
+            f.write(f'{user_id}\t{",".join(str(x) for x in rec)}')
+            f.write('\n')
+
+    sc.stop()
+
+
+if __name__ == "__main__":
+    file_path = Path("soc-LiveJournal1Adj.txt")
+    out_path = Path("output.txt")
+
+    process_friend_recommendation(file_path, out_path)
