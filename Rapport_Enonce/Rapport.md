@@ -45,8 +45,12 @@ As we can observe, Linux is more efficient and `13 times` faster than Hadoop to 
 
 Here, Hadoop is `3 times` faster to complete this task than Spark on every dataset. 
 
-_Remark :_ We expected Spark to be faster than Hadoop however the results show the opposite. It is perhaps due to the fact that memory is not requested and Spark is better for completing a lot of small tasks like in machine Learning. 
+_Remark :_ 
+- We expected Spark to be faster than Hadoop however the results show the opposite. It is perhaps due to the fact that memory is not requested and Spark is better for completing a lot of small tasks like in machine Learning. 
 Moreover, it is possible that if the tasks were longer, Spark would be faster to complete.
+
+- On the other hand, we observe that there is an huge variance when we run the wordcount_spark_profile.py This could explain why Spark can be disadvantaged. 
+
 
 # Social Network Problem Using MapReduce
 
