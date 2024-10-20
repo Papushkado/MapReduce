@@ -98,6 +98,10 @@ Below are the friend recommendations for the specified users based on our MapRed
 
 # Appendix 
 
-The full code is available [here]()
+- To run code, you have to : 
+  1. Have you AWS credentials in your environnement thanks to ``` aws configure ``` or by copying it in `~/.aws/credentials`
+  2. Run `automation.py`
+
+The full code is available [here](https://github.com/Papushkado/MapReduce)
 
 
