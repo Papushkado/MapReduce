@@ -7,6 +7,10 @@ from utils.run_command_instance import establish_ssh_connection,run_command
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+from scp import SCPClient
+
+
+INSTANCES_INSTALL_DELAY = 800
 
 #Retrieve the AWS credentials from the .env file
 os.environ.pop('AWS_ACCESS_KEY_ID', None)
@@ -42,10 +46,24 @@ instance_params = {
         'MinCount': 1,
         'MaxCount': 1,
         'KeyName': key_pair_name,
-        'SecurityGroupIds': [group_id],}
+        'SecurityGroupIds': [group_id],
+        'BlockDeviceMappings':
+        [
+            {
+                'DeviceName': '/dev/sda1',
+                'Ebs': {
+                    'VolumeSize': 16,
+                    'VolumeType': 'standard'
+                }
+            }
+        ]
+}
 
 #Instance user data (Setting up Hadoop and Pyspark)
 user_data = """#!/bin/bash
+# python3 -m venv myenv
+# source myenv/bin/activate
+
 sudo apt-get update && sudo apt-get upgrade -y
 sudo apt-get install -y bash wget coreutils default-jdk
 
@@ -62,7 +80,7 @@ sudo mv spark-3.5.3-bin-hadoop3 /usr/local/spark
 
 
 sudo apt-get install python3 python3-pip -y
-sudo pip3 install pyspark
+sudo pip3 install pyspark --break-system-packages
 
 
 
@@ -92,7 +110,7 @@ instance = ec2_resource.Instance(instance_id)
 
 # instance.wait_until_running()  # Wait until the instance is running
 # instance.reload() # Reload the instance data to get updated attributes
-# public_ip = response['Instances'][0].get('PublicIpAddress') # Get the public IP address
+# public_ip = instance.public_ip_address # Get the public IP address
 
 public_ip = None
 counter = 0
@@ -104,6 +122,8 @@ while public_ip is None:
     public_ip = response['Reservations'][0]['Instances'][0].get('PublicIpAddress')
 
 print(f"The public IP address of instance {instance_id} is: {public_ip}")
+
+print("Waiting for the instance to be ready...")
 time.sleep(100)
 
 
@@ -116,6 +136,7 @@ print("SSH connection established with the EC2 instance...")
 command = 'test -f /tmp/user_data_complete && echo "complete" || echo "incomplete"'
 
 # Loop until the setup is complete
+counter = 0
 while True:
     output, error = run_command(ssh_connection, command)
     if output == "complete":
@@ -124,6 +145,8 @@ while True:
     else:
         print("Waiting for Hadoop and Spark to complete...")
         time.sleep(120)  # Wait for 60 seconds before checking again
+        counter += 120
+        print(counter, " seconds elapsed...")
 
 iterations = 3
 datasets = ['https://www.gutenberg.ca/ebooks/buchanj-midwinter/buchanj-midwinter-00-t.txt',
@@ -164,12 +187,16 @@ for dataset in datasets:
         output, error = run_command(ssh_connection, wordCount_Hadoop_command)
         hadoop_exec_times.append(time.time() - start_time)
 
+        print("Hadoop word count executed")
+
         # Linux WordCount command
         wordCount_Linux_command = f"cat {file_name} | tr ' ' '\\n' | sort | uniq -c"
         # Measure Linux execution time
         start_time = time.time()
         output, error = run_command(ssh_connection, wordCount_Linux_command)
         linux_exec_times.append(time.time() - start_time)
+
+        print("Linux word count executed")
 
         # Spark WordCount command
         START_COMMAND = f"/usr/local/spark/bin/spark-submit wordCount_spark.py /home/ubuntu/{file_name}"
@@ -180,10 +207,59 @@ for dataset in datasets:
         output, error = run_command(ssh_connection, wordCount_spark_command)
         spark_exec_times.append(time.time() - start_time)
 
+        print("Spark word count executed")
+
     # Calculate the average execution times across iterations
     hadoop_times.append(np.mean(hadoop_exec_times))
     linux_times.append(np.mean(linux_exec_times))
     spark_times.append(np.mean(spark_exec_times))
+
+scp = SCPClient(ssh_connection.get_transport())
+try:
+    scp.put('friend_recommendation.py', '/home/ubuntu/friend_recommendation.py')
+    print("Uploaded friend_recommendation.py successfully.")
+    
+    # Verify upload by checking if the file exists on EC2
+    output, error = run_command(ssh_connection, 'ls /home/ubuntu/friend_recommendation.py')
+    if output:
+        print(f"Verification: friend_recommendation.py exists on EC2: {output}")
+
+    scp.put('soc-LiveJournal1Adj.txt', '/home/ubuntu/soc-LiveJournal1Adj.txt')
+    print("Uploaded soc-LiveJournal1Adj.txt successfully.")
+    
+    # Verify upload by checking if the file exists on EC2
+    output, error = run_command(ssh_connection, 'ls /home/ubuntu/soc-LiveJournal1Adj.txt')
+    if output:
+        print(f"Verification: soc-LiveJournal1Adj.txt exists on EC2: {output}")
+except Exception as e:
+    print(f"File upload failed: {e}")
+    exit(1)
+
+# Run the friend recommendation Spark job
+command = 'python3 /home/ubuntu/friend_recommendation.py'
+print("Running friend recommendation...")
+output, error = run_command(ssh_connection, command)
+print(f"Friend Recommendation job output:\n{output}")
+if error:
+    print(f"Error during job execution:\n{error}")
+
+# Fetch output (recommendations)
+print("Fetching output from EC2 instance...")
+try:
+    scp.get('/home/ubuntu/output.txt', './output.txt')
+    print("Output fetched and saved as output.txt.")
+    
+    # Verify the output file exists locally
+    if os.path.exists('./output.txt'):
+        print(f"Verification: output.txt successfully saved locally.")
+except Exception as e:
+    print(f"Failed to fetch output.txt: {e}")
+
+
+scp.close()
+print("SCP connection closed.")
+ssh_connection.close()
+print("SSH connection closed.")
 
 # Plot the results
 datasets_idx = np.linspace(1, len(datasets), len(datasets))
@@ -240,5 +316,28 @@ plt.show()
 # Spark_output, _ = run_command_on_ec2(public_ip,key_pair_path, wordCount_spark_command)
 # print('Spark output:','\n',Spark_output)
 
+##### In this part, we are going to clean_up, all the set up environnement
 
-ssh_connection.close()
+def terminate_instances(ec2, instance_ids):
+    response = ec2.terminate_instances(InstanceIds=instance_ids)
+    return response
+
+def delete_key_pair(ec2, key_name):
+    response = ec2.delete_key_pair(KeyName=key_name)
+    return response
+
+def delete_security_group(ec2, group_id):
+    response = ec2.delete_security_group(GroupId=group_id)
+    return response
+
+def clean_up(ec2, instance_ids, key_name, group_id):
+    
+    terminate_instances(ec2,instance_ids)
+    time.sleep(INSTANCES_INSTALL_DELAY) # We wait 1mn30 to be sure that the instances are deleted
+    delete_key_pair(ec2,key_name)
+    time.sleep(60) # We wait 30s to be sure that the key_pairs are deleted
+    delete_security_group(ec2, group_id) # We need all the instances to be deleted before deleting the security group
+    
+print("\n Cleaning up instances and security group ...")
+clean_up(ec2, [instance_id], key_pair_name, group_id)
+
