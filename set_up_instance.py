@@ -90,13 +90,18 @@ print(f"Instance {instance_id} is launching...")
 ec2_resource = boto3.resource('ec2')
 instance = ec2_resource.Instance(instance_id)
 
-instance.wait_until_running()  # Wait until the instance is running
-instance.reload() # Reload the instance data to get updated attributes
-public_ip = response['Instances'][0].get('PublicIpAddress') # Get the public IP address
+# instance.wait_until_running()  # Wait until the instance is running
+# instance.reload() # Reload the instance data to get updated attributes
+# public_ip = response['Instances'][0].get('PublicIpAddress') # Get the public IP address
 
-# time.sleep(800)  # Wait for 60 seconds before checking the public IP address
-# response = ec2.describe_instances(InstanceIds=[instance_id])
-# public_ip = response['Reservations'][0]['Instances'][0].get('PublicIpAddress')
+public_ip = None
+counter = 0
+while public_ip is None:
+    time.sleep(10)  # Wait for 10 seconds before checking the public IP address again
+    counter += 10
+    response = ec2.describe_instances(InstanceIds=[instance_id])
+    print(counter, " seconds elapsed...")
+    public_ip = response['Reservations'][0]['Instances'][0].get('PublicIpAddress')
 
 print(f"The public IP address of instance {instance_id} is: {public_ip}")
 time.sleep(100)
