@@ -24,55 +24,69 @@ ec2 = boto3.client('ec2', aws_access_key_id=aws_access_key_id, aws_secret_access
 key_pair_path = generate_key_pair(ec2, key_pair_name)
 group_id = create_security_group(ec2, "log8415E-tp2", "none")
 
-# Launch EC2 instance
+#Instance parameters
 instance_params = {
-    'ImageId': "ami-0e86e20dae9224db8", 
-    'InstanceType': "t2.large",
-    'MinCount': 1,
-    'MaxCount': 1,
-    'KeyName': key_pair_name,
-    'SecurityGroupIds': [group_id],
-}
+        'ImageId': "ami-0e86e20dae9224db8", 
+        'InstanceType': "t2.large",
+        'MinCount': 1,
+        'MaxCount': 1,
+        'KeyName': key_pair_name,
+        'SecurityGroupIds': [group_id],}
 
-user_data = """#!/bin/bash
+#Instance user data (Setting up Hadoop and Pyspark)
+
+user_data = r"""#!/bin/bash
+# Update and upgrade the system
+# Update and upgrade the system
 sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y bash wget coreutils default-jdk python3 python3-pip
 
-# Install Hadoop
-sudo wget https://dlcdn.apache.org/hadoop/common/hadoop-3.4.0/hadoop-3.4.0.tar.gz
-sudo tar -xzvf hadoop-3.4.0.tar.gz
-sudo mv hadoop-3.4.0 /usr/local/hadoop
-JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")
-echo "export JAVA_HOME=$JAVA_HOME" | sudo tee -a /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+# Ensure the universe repository is enabled
+sudo add-apt-repository universe
+sudo apt-get update
 
-# Install Spark
-sudo wget https://dlcdn.apache.org/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz
-sudo tar -xzvf spark-3.5.3-bin-hadoop3.tgz
-sudo mv spark-3.5.3-bin-hadoop3 /usr/local/spark
+# Install necessary packages: Java, Python3, and pip3
+sudo apt-get install -y default-jdk python3 python3-pip
 
-# Install Python and PySpark
-sudo apt-get install python3 python3-pip -y
-sudo pip3 install pyspark
+# Install PySpark globally
+sudo pip3 install pyspark --break-system-packages
 
-# Set environment variables
-sudo bash -c 'echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment'
-sudo bash -c 'echo "HADOOP_HOME=/usr/local/hadoop" >> /etc/environment'
+# Also install PySpark for the current user (non-sudo installation)
+pip3 install --user --upgrade pyspark
+
+
+# Ensure permissions for PySpark (global and user-specific installations)
+PYSPARK_PATH=$(pip show pyspark | grep Location | cut -d' ' -f2)
+if [ -d "$PYSPARK_PATH" ]; then
+    sudo chmod -R ugo+rX $PYSPARK_PATH
+else
+    echo "PySpark path not found: $PYSPARK_PATH"
+fi
+
+# Set environment variables for Java and Spark
+sudo bash -c 'echo "JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")" >> /etc/environment'
 sudo bash -c 'echo "SPARK_HOME=/usr/local/spark" >> /etc/environment'
-sudo bash -c 'echo "PATH=/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> /etc/environment'
+sudo bash -c 'echo "PYTHONPATH=\$PYTHONPATH:/usr/local/spark/python:/usr/local/spark/python/lib/py4j-0.10.9-src.zip" >> /etc/environment'
+sudo bash -c 'echo "PATH=\$PATH:~/.local/bin:/usr/local/spark/bin" >> /etc/environment'
 
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-export HADOOP_HOME=/usr/local/hadoop
-export SPARK_HOME=/usr/local/spark
-export PATH=$PATH:/usr/local/hadoop/bin:/usr/local/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Set local user environment variables for pip packages
+echo "export PATH=\$PATH:~/.local/bin" >> ~/.bashrc
+echo "export PYTHONPATH=\$PYTHONPATH:/usr/local/spark/python:/usr/local/spark/python/lib/py4j-0.10.9-src.zip" >> ~/.bashrc
+echo "export PYSPARK_PYTHON=python3" >> ~/.bashrc
 
-# Verify installations
-/usr/local/hadoop/bin/hadoop version
+# Apply the changes for the current session
+source ~/.bashrc
+
+# Verify installations for debugging purposes
 /usr/local/spark/bin/spark-submit --version || echo "Spark installation failed"
 python3 -m pip show pyspark || echo "PySpark installation failed"
+
+# Test PySpark import as a verification step
+python3 -c "import pyspark; print('PySpark imported successfully')" || echo "Failed to import PySpark"
 
 # Create a marker file to signal that the setup is complete
 touch /tmp/user_data_complete
 """
+
 
 print("Launching EC2 instance...")
 response = ec2.run_instances(UserData=user_data, **instance_params)
@@ -95,9 +109,9 @@ while public_ip is None:
 
 print(f"Instance public IP address: {public_ip}")
 # Establish SSH connection to the instance
+time.sleep(150)  # Wait for 100 seconds before attempting to establish an SSH connection
 print("Establishing SSH connection...")
 key_pair_path = str(key_pair_path)
-ssh_connection = None
 ssh_connection = establish_ssh_connection(public_ip, key_pair_path)
 print(ssh_connection)
 print("SSH connection established with the EC2 instance...")
@@ -140,25 +154,6 @@ while True:
         time.sleep(120)  # Wait for 60 seconds before checking again
 
 
-print("Monitoring job completion...")
-command = 'python3 -m pip show pyspark && echo "pyspark_installed" || echo "pyspark_not_installed"'
-max_retries = 10
-retries = 0
-
-while retries < max_retries:
-    output, error = run_command(ssh_connection, command)
-    print(f"Installation check output: {output.strip()}")
-    if "pyspark_installed" in output.strip():
-        print("PySpark installation completed successfully!")
-        break
-    else:
-        print(f"PySpark not installed yet, retrying in 60 seconds... (Attempt {retries + 1}/{max_retries})")
-        time.sleep(60)  # Wait 60 seconds before the next check
-        retries += 1
-
-if retries >= max_retries:
-    print("PySpark installation did not complete within the expected time. Exiting.")
-    exit(1)
 
 # Run the friend recommendation Spark job
 command = 'python3 /home/ubuntu/friend_recommendation.py'
