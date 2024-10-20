@@ -9,6 +9,12 @@ Authors : Stéphane Michaud 1904016 - Stephen Cohen 2412336 - Zabiullah Shair Za
   - [Results](#results)
     - [Hadoop VS Linux](#hadoop-vs-linux)
     - [Hadoop VS Spark](#hadoop-vs-spark)
+- [Social Network Problem Using MapReduce](#social-network-problem-using-mapreduce)
+  - [Approach](#approach)
+  - [Algorithm](#algorithm)
+  - [Challenges](#challenges)
+  - [Results](#results-1)
+- [Appendix](#appendix)
 
 
 ---
@@ -39,8 +45,53 @@ As we can observe, Linux is more efficient and `13 times` faster than Hadoop to 
 
 Here, Hadoop is `3 times` faster to complete this task than Spark on every dataset
 
+# Social Network Problem Using MapReduce
+
+The social network problem involves recommending friends to users based on mutual connections. We used MapReduce to solve this problem by calculating second-degree connections and ranking users by the number of mutual friends.
+
+## Approach
+
+1. **Map Phase:** For each user, create a list of all second-degree connections (friends of friends).
+2. **Reduce Phase:** For each pair of users, count the number of mutual friends and sort them by this count to generate friend recommendations.
+
+## Algorithm 
+
+Our algorithm takes the following approach:
+
+- **Input:** A tab-separated file where each line lists a user and their direct friends.
+
+- **Map Phase:** Emit pairs of users who share common friends.
+
+- **Reduce Phase:** Count how many mutual friends exist between each pair and generate the top 10 friend recommendations.
+
+The code is available here : friend_recommendation.py
+
+## Challenges 
+
+
+One challenge was ensuring that no direct friends were recommended. We handled this by filtering out direct connections in the Reduce phase.
+
+```
+friends_filtered = friends_connection.filter(lambda line: -1 not in line[1]) 
+```
+
+## Results 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+# Appendix 
+
+The full code is available (here)[ddk.]
 
 
