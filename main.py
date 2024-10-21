@@ -247,7 +247,6 @@ plt.grid(True)
 
 plt.tight_layout()
 plt.show()
-    
 
 ##### In this part, we are going to clean_up, all the set up environnement
 
